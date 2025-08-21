@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpineGuard Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2.2.1/dist/posenet.min.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #3b82f6, #1d4ed8);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            transition: all 0.2s;
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-red {
+            background: linear-gradient(45deg, #ef4444, #dc2626);
+        }
+        
+        .btn-green {
+            background: linear-gradient(45deg, #10b981, #059669);
+        }
+        
+        .btn-orange {
+            background: linear-gradient(45deg, #f59e0b, #d97706);
+        }
+        
+        .score {
+            font-size: 4rem;
+            font-weight: bold;
+            background: linear-gradient(45deg, #10b981, #059669);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .progress-bar {
+            background: #374151;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+            height: 8px;
+            border-radius: 8px;
+            transition: width 0.3s ease;
+        }
+        
+        video, canvas {
+            border-radius: 8px;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-white p-4">
+    <div class="max-w-7xl mx-auto">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold mb-2">SpineGuard Pro</h1>
+            <p class="text-gray-300">AI Posture Monitoring System</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Camera Feed -->
+            <div class="lg:col-span-2 card p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold">Camera Feed</h2>
+                    <select id="deviceSelector" class="bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600">
+                        <option value="">Select Camera...</option>
+                    </select>
+                </div>
+                
+                <div class="flex gap-3 mb-4 flex-wrap">
+                    <button id="startBtn" class="btn">Start Monitoring</button>
+                    <button id="stopBtn" class="btn btn-red" disabled>Stop</button>
+                    <button id="exerciseBtn" class="btn btn-green">Exercise Break</button>
+                    <button id="settingsBtn" class="btn btn-orange">Settings</button>
+                </div>
+
+                <div class="relative mb-4">
+                    <video id="video" class="w-full max-h-96 bg-gray-800" playsinline muted></video>
+                    <canvas id="canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <label class="flex items-center space-x-2">
+                        <input id="showMarkers" type="checkbox" class="rounded" checked>
+                        <span>Show Pose Points</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input id="showSkeleton" type="checkbox" class="rounded" checked>
+                        <span>Show Skeleton</span>
+                    </label>
+                </div>
+                
+                <!-- Performance Stats -->
+                <div class="mt-4 card p-4">
+                    <div class="flex justify-between text-sm">
+                        <span>Frame Rate: <span id="fps" class="text-blue-400">--</span></span>
+                        <span>Processing: <span id="processing" class="text-green-400">--ms</span></span>
+                        <span>Keypoints: <span id="keypoints" class="text-yellow-400">--</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats Panel -->
+            <div class="space-y-6">
+                <div class="card p-6">
+                    <h2 class="text-xl font-semibold mb-6">Posture Score</h2>
+                    
+                    <div class="text-center mb-6">
+                        <div id="score" class="score">--</div>
+                        <div class="progress-bar mt-4">
+                            <div id="progressFill" class="progress-fill" style="width: 0%"></div>
+                        </div>
+                        <div id="category" class="mt-2 text-lg font-medium">Ready</div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div class="flex justify-between">
+                            <span>Good Posture:</span>
+                            <span id="goodTime" class="text-green-400">0s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Poor Posture:</span>
+                            <span id="poorTime" class="text-red-400">0s</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Break Timer:</span>
+                            <span id="breakTimer" class="text-blue-400">30:00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Body Analysis -->
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold mb-4">Body Analysis</h3>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex justify-between">
+                            <span>Head Alignment:</span>
+                            <span id="headAlign" class="text-gray-400">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Shoulder Level:</span>
+                            <span id="shoulderLevel" class="text-gray-400">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Forward Head:</span>
+                            <span id="forwardHead" class="text-gray-400">--</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Spine Curve:</span>
+                            <span id="spineCurve" class="text-gray-400">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Controls -->
+                <div class="card p-6">
+                    <h3 class="text-lg font-semibold mb-4">Quick Controls</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-sm mb-2">Analysis Rate: <span id="rateDisplay">10</span>/sec</label>
+                            <input id="rateSlider" type="range" min="5" max="30" value="10" class="w-full">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Alert Threshold: <span id="thresholdDisplay">50</span></label>
+                            <input id="thresholdSlider" type="range" min="20" max="80" value="50" class="w-full">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Status -->
+        <div class="mt-6 card p-4">
+            <div class="flex justify-between items-center">
+                <span>Status:</span>
+                <span id="status" class="font-semibold text-blue-400">Ready</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Exercise Modal -->
+    <div id="exerciseModal" class="modal hidden flex items-center justify-center">
+        <div class="modal-content p-8 max-w-md w-full mx-4">
+            <h3 class="text-2xl font-bold mb-4 text-center">Exercise Break</h3>
+            <div class="text-center">
+                <div id="exerciseTitle" class="text-xl mb-4">Neck Stretch</div>
+                <div id="exerciseCountdown" class="text-6xl font-bold mb-6">30</div>
+                <div class="flex gap-3 justify-center">
+                    <button id="skipExercise" class="btn btn-orange">Skip</button>
+                    <button id="completeExercise" class="btn btn-green">Complete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal hidden flex items-center justify-center">
+        <div class="modal-content p-8 max-w-2xl w-full mx-4 max-h-96 overflow-y-auto">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold">Settings</h3>
+                <button id="closeSettings" class="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="space-y-4">
+                    <h4 class="font-semibold text-lg">Detection</h4>
+                    <div>
+                        <label class="block text-sm mb-2">Sensitivity: <span id="sensitivityValue">1.0</span></label>
+                        <input id="sensitivitySlider" type="range" min="0.1" max="2.0" step="0.1" value="1.0" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-2">Marker Size: <span id="markerSizeValue">5</span></label>
+                        <input id="markerSizeSlider" type="range" min="2" max="10" value="5" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-sm mb-2">Break Reminder (min): <span id="breakIntervalValue">30</span></label>
+                        <input id="breakIntervalSlider" type="range" min="15" max="120" value="30" class="w-full">
+                    </div>
+                </div>
+                
+                <div class="space-y-4">
+                    <h4 class="font-semibold text-lg">Alerts</h4>
+                    <label class="flex items-center space-x-2">
+                        <input id="soundAlerts" type="checkbox" class="rounded">
+                        <span>Sound Alerts</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input id="breakReminders" type="checkbox" class="rounded" checked>
+                        <span>Break Reminders</span>
+                    </label>
+                    <label class="flex items-center space-x-2">
+                        <input id="showAnalysis" type="checkbox" class="rounded" checked>
+                        <span>Show Analysis Data</span>
+                    </label>
+                    <div>
+                        <label class="block text-sm mb-2">Alert Cooldown (sec): <span id="cooldownValue">30</span></label>
+                        <input id="cooldownSlider" type="range" min="5" max="300" value="30" class="w-full">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 mt-6">
+                <button id="resetSettings" class="btn btn-orange">Reset Defaults</button>
+                <button id="saveSettings" class="btn">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class SpineGuardPro {
+            constructor() {
+                this.video = document.getElementById('video');
+                this.canvas = document.getElementById('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.deviceSelector = document.getElementById('deviceSelector');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.exerciseBtn = document.getElementById('exerciseBtn');
+                this.settingsBtn = document.getElementById('settingsBtn');
+                
+                // UI Elements
+                this.scoreElement = document.getElementById('score');
+                this.progressFill = document.getElementById('progressFill');
+                this.categoryElement = document.getElementById('category');
+                this.goodTimeElement = document.getElementById('goodTime');
+                this.poorTimeElement = document.getElementById('poorTime');
+                this.breakTimerElement = document.getElementById('breakTimer');
+                this.statusElement = document.getElementById('status');
+                this.fpsElement = document.getElementById('fps');
+                this.processingElement = document.getElementById('processing');
+                this.keypointsElement = document.getElementById('keypoints');
+                
+                // Body analysis elements
+                this.headAlignElement = document.getElementById('headAlign');
+                this.shoulderLevelElement = document.getElementById('shoulderLevel');
+                this.forwardHeadElement = document.getElementById('forwardHead');
+                this.spineCurveElement = document.getElementById('spineCurve');
+                
+                // Controls
+                this.showMarkers = document.getElementById('showMarkers');
+                this.showSkeleton = document.getElementById('showSkeleton');
+                this.rateSlider = document.getElementById('rateSlider');
+                this.rateDisplay = document.getElementById('rateDisplay');
+                this.thresholdSlider = document.getElementById('thresholdSlider');
+                this.thresholdDisplay = document.getElementById('thresholdDisplay');
+                
+                // Modals
+                this.exerciseModal = document.getElementById('exerciseModal');
+                this.settingsModal = document.getElementById('settingsModal');
+                this.exerciseTitle = document.getElementById('exerciseTitle');
+                this.exerciseCountdown = document.getElementById('exerciseCountdown');
+                
+                // State
+                this.model = null;
+                this.stream = null;
+                this.isRunning = false;
+                this.analysisRate = 10;
+                this.threshold = 50;
+                this.goodSeconds = 0;
+                this.poorSeconds = 0;
+                this.lastUpdateTime = 0;
+                this.frameCount = 0;
+                this.fpsCounter = 0;
+                this.lastFpsTime = 0;
+                this.exerciseTimer = null;
+                this.breakTimer = 30 * 60; // 30 minutes
+                this.breakInterval = null;
+                this.markerSize = 5;
+                this.sensitivity = 1.0;
+                this.soundEnabled = false;
+                this.breakRemindersEnabled = true;
+                this.analysisEnabled = true;
+                this.alertCooldown = 30;
+                this.lastAlertTime = 0;
+                
+                this.exercises = [
+                    { name: 'Neck Stretch', duration: 30 },
+                    { name: 'Shoulder Rolls', duration: 30 },
+                    { name: 'Upper Back Stretch', duration: 30 },
+                    { name: 'Chin Tucks', duration: 30 },
+                    { name: 'Side Bends', duration: 30 }
+                ];
+                
+                this.init();
+            }
+            
+            async init() {
+                await this.initTensorFlow();
+                await this.loadCameras();
+                this.bindEvents();
+                this.startBreakTimer();
+                this.loadSettings();
+            }
+            
+            async initTensorFlow() {
+                try {
+                    await tf.ready();
+                    this.statusElement.textContent = 'TensorFlow Ready';
+                } catch (error) {
+                    console.error('TensorFlow initialization failed:', error);
+                    this.statusElement.textContent = 'TensorFlow Error';
+                }
+            }
+            
+            async loadCameras() {
+                try {
+                    await navigator.mediaDevices.getUserMedia({ video: true });
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                    
+                    this.deviceSelector.innerHTML = '<option value="">Select Camera...</option>';
+                    videoDevices.forEach((device, index) => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.textContent = device.label || `Camera ${index + 1}`;
+                        this.deviceSelector.appendChild(option);
+                    });
+                    
+                    if (videoDevices.length > 0) {
+                        this.deviceSelector.value = videoDevices[0].deviceId;
+                    }
+                } catch (error) {
+                    console.error('Failed to load cameras:', error);
+                }
+            }
+            
+            bindEvents() {
+                this.startBtn.addEventListener('click', () => this.start());
+                this.stopBtn.addEventListener('click', () => this.stop());
+                this.exerciseBtn.addEventListener('click', () => this.showExerciseModal());
+                this.settingsBtn.addEventListener('click', () => this.showSettingsModal());
+                
+                this.rateSlider.addEventListener('input', (e) => {
+                    this.analysisRate = parseInt(e.target.value);
+                    this.rateDisplay.textContent = this.analysisRate;
+                });
+                
+                this.thresholdSlider.addEventListener('input', (e) => {
+                    this.threshold = parseInt(e.target.value);
+                    this.thresholdDisplay.textContent = this.threshold;
+                });
+                
+                // Exercise modal events
+                document.getElementById('skipExercise').addEventListener('click', () => this.hideExerciseModal());
+                document.getElementById('completeExercise').addEventListener('click', () => this.hideExerciseModal());
+                
+                // Settings modal events
+                document.getElementById('closeSettings').addEventListener('click', () => this.hideSettingsModal());
+                document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
+                document.getElementById('resetSettings').addEventListener('click', () => this.resetSettings());
+                
+                this.bindSettingsEvents();
+                
+                // Close modals on outside click
+                this.exerciseModal.addEventListener('click', (e) => {
+                    if (e.target === this.exerciseModal) this.hideExerciseModal();
+                });
+                this.settingsModal.addEventListener('click', (e) => {
+                    if (e.target === this.settingsModal) this.hideSettingsModal();
+                });
+            }
+            
+            bindSettingsEvents() {
+                const sensitivitySlider = document.getElementById('sensitivitySlider');
+                const sensitivityValue = document.getElementById('sensitivityValue');
+                sensitivitySlider.addEventListener('input', (e) => {
+                    this.sensitivity = parseFloat(e.target.value);
+                    sensitivityValue.textContent = this.sensitivity;
+                });
+                
+                const markerSizeSlider = document.getElementById('markerSizeSlider');
+                const markerSizeValue = document.getElementById('markerSizeValue');
+                markerSizeSlider.addEventListener('input', (e) => {
+                    this.markerSize = parseInt(e.target.value);
+                    markerSizeValue.textContent = this.markerSize;
+                });
+                
+                const breakIntervalSlider = document.getElementById('breakIntervalSlider');
+                const breakIntervalValue = document.getElementById('breakIntervalValue');
+                breakIntervalSlider.addEventListener('input', (e) => {
+                    const minutes = parseInt(e.target.value);
+                    breakIntervalValue.textContent = minutes;
+                    this.breakTimer = minutes * 60;
+                });
+                
+                const cooldownSlider = document.getElementById('cooldownSlider');
+                const cooldownValue = document.getElementById('cooldownValue');
+                cooldownSlider.addEventListener('input', (e) => {
+                    this.alertCooldown = parseInt(e.target.value);
+                    cooldownValue.textContent = this.alertCooldown;
+                });
+            }
+            
+            async start() {
+                try {
+                    this.statusElement.textContent = 'Starting camera...';
+                    
+                    const constraints = {
+                        video: {
+                            width: 640,
+                            height: 480,
+                            deviceId: this.deviceSelector.value ? { exact: this.deviceSelector.value } : undefined
+                        }
+                    };
+                    
+                    this.stream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.video.srcObject = this.stream;
+                    await this.video.play();
+                    
+                    // Wait for video metadata to load
+                    await new Promise(resolve => {
+                        if (this.video.videoWidth > 0) {
+                            resolve();
+                        } else {
+                            this.video.addEventListener('loadedmetadata', resolve, { once: true });
+                        }
+                    });
+                    
+                    this.canvas.width = this.video.videoWidth;
+                    this.canvas.height = this.video.videoHeight;
+                    
+                    // Set canvas display size to match video
+                    this.canvas.style.width = this.video.offsetWidth + 'px';
+                    this.canvas.style.height = this.video.offsetHeight + 'px';
+                    
+                    this.statusElement.textContent = 'Loading AI model...';
+                    
+                    try {
+                        this.model = await posenet.load({
+                            architecture: 'ResNet50',
+                            outputStride: 32,
+                            inputResolution: { width: 257, height: 257 },
+                            quantBytes: 2
+                        });
+                    } catch (error) {
+                        console.warn('ResNet50 failed, trying MobileNet:', error);
+                        this.model = await posenet.load({
+                            architecture: 'MobileNetV1',
+                            outputStride: 16,
+                            inputResolution: { width: 513, height: 513 },
+                            multiplier: 0.75
+                        });
+                    }
+                    
+                    this.isRunning = true;
+                    this.lastUpdateTime = Date.now();
+                    this.lastFpsTime = Date.now();
+                    this.frameCount = 0;
+                    this.fpsCounter = 0;
+                    
+                    this.statusElement.textContent = 'Monitoring Active';
+                    this.startBtn.disabled = true;
+                    this.stopBtn.disabled = false;
+                    
+                    this.analyze();
+                    
+                } catch (error) {
+                    console.error('Failed to start:', error);
+                    this.statusElement.textContent = 'Error: ' + error.message;
+                }
+            }
+            
+            stop() {
+                this.isRunning = false;
+                
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                    this.video.srcObject = null;
+                }
+                
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.statusElement.textContent = 'Stopped';
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+                
+                // Reset displays
+                this.fpsElement.textContent = '--';
+                this.processingElement.textContent = '--';
+                this.keypointsElement.textContent = '--';
+            }
+            
+            async analyze() {
+                if (!this.isRunning || !this.model) return;
+                
+                const startTime = performance.now();
+                
+                try {
+                    const pose = await this.model.estimateSinglePose(this.video, {
+                        flipHorizontal: false,
+                        imageScaleFactor: 0.5 * this.sensitivity,
+                        outputStride: 16
+                    });
+                    
+                    const processingTime = performance.now() - startTime;
+                    this.processingElement.textContent = Math.round(processingTime) + 'ms';
+                    
+                    const validKeypoints = pose.keypoints.filter(kp => kp.score > 0.1);
+                    this.keypointsElement.textContent = validKeypoints.length;
+                    
+                    const score = this.calculatePostureScore(pose);
+                    this.updateUI(score, pose);
+                    
+                    if (this.showMarkers.checked || this.showSkeleton.checked) {
+                        this.drawPose(pose);
+                    } else {
+                        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    }
+                    
+                    this.updateTimeTracking(score);
+                    this.checkAlert(score);
+                    
+                } catch (error) {
+                    console.error('Analysis error:', error);
+                }
+                
+                // Update FPS
+                this.frameCount++;
+                const now = Date.now();
+                if (now - this.lastFpsTime >= 1000) {
+                    this.fpsElement.textContent = this.frameCount + ' fps';
+                    this.frameCount = 0;
+                    this.lastFpsTime = now;
+                }
+                
+                setTimeout(() => this.analyze(), 1000 / this.analysisRate);
+            }
+            
+            calculatePostureScore(pose) {
+                const keypoints = {};
+                pose.keypoints.forEach(kp => keypoints[kp.part] = kp);
+                
+                if (!keypoints.nose || !keypoints.leftShoulder || !keypoints.rightShoulder ||
+                    keypoints.nose.score < 0.2 || keypoints.leftShoulder.score < 0.2 || keypoints.rightShoulder.score < 0.2) {
+                    return 25;
+                }
+                
+                let score = 50;
+                const metrics = {};
+                
+                const nose = keypoints.nose.position;
+                const leftShoulder = keypoints.leftShoulder.position;
+                const rightShoulder = keypoints.rightShoulder.position;
+                const shoulderCenter = {
+                    x: (leftShoulder.x + rightShoulder.x) / 2,
+                    y: (leftShoulder.y + rightShoulder.y) / 2
+                };
+                
+                // Head alignment
+                const headOffset = Math.abs(nose.x - shoulderCenter.x);
+                const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
+                const headAlignmentRatio = headOffset / (shoulderWidth || 100);
+                
+                if (headAlignmentRatio < 0.08) {
+                    score += 25;
+                    metrics.headAlign = 'Excellent';
+                } else if (headAlignmentRatio < 0.15) {
+                    score += 15;
+                    metrics.headAlign = 'Good';
+                } else if (headAlignmentRatio < 0.3) {
+                    score += 5;
+                    metrics.headAlign = 'Fair';
+                } else {
+                    score -= 15;
+                    metrics.headAlign = 'Poor';
+                }
+                
+                // Shoulder level
+                const shoulderLevelDiff = Math.abs(leftShoulder.y - rightShoulder.y);
+                if (shoulderLevelDiff < 8) {
+                    score += 15;
+                    metrics.shoulderLevel = 'Level';
+                } else if (shoulderLevelDiff < 20) {
+                    score += 5;
+                    metrics.shoulderLevel = 'Slight tilt';
+                } else {
+                    score -= 10;
+                    metrics.shoulderLevel = 'Uneven';
+                }
+                
+                // Forward head posture
+                const neckLength = Math.abs(nose.y - shoulderCenter.y);
+                const postureRatio = neckLength / (shoulderWidth || 100);
+                if (postureRatio > 0.7) {
+                    score += 20;
+                    metrics.forwardHead = 'Good';
+                } else if (postureRatio > 0.5) {
+                    score += 10;
+                    metrics.forwardHead = 'Moderate';
+                } else {
+                    score -= 15;
+                    metrics.forwardHead = 'Forward';
+                }
+                
+                // Spine analysis
+                if (keypoints.leftHip && keypoints.rightHip) {
+                    const leftHip = keypoints.leftHip.position;
+                    const rightHip = keypoints.rightHip.position;
+                    const hipCenter = {
+                        x: (leftHip.x + rightHip.x) / 2,
+                        y: (leftHip.y + rightHip.y) / 2
+                    };
+                    
+                    const spineAlignment = Math.abs(shoulderCenter.x - hipCenter.x);
+                    const spineRatio = spineAlignment / (shoulderWidth || 100);
+                    
+                    if (spineRatio < 0.1) {
+                        score += 15;
+                        metrics.spineCurve = 'Straight';
+                    } else if (spineRatio < 0.2) {
+                        score += 5;
+                        metrics.spineCurve = 'Slight curve';
+                    } else {
+                        score -= 10;
+                        metrics.spineCurve = 'Curved';
+                    }
+                } else {
+                    metrics.spineCurve = 'Unknown';
+                }
+                
+                return {
+                    score: Math.max(0, Math.min(100, Math.round(score))),
+                    metrics
+                };
+            }
+            
+            drawPose(pose) {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                const scaleX = this.canvas.width / this.video.videoWidth;
+                const scaleY = this.canvas.height / this.video.videoHeight;
+                
+                // Draw skeleton connections
+                if (this.showSkeleton.checked) {
+                    const adjacentPairs = posenet.getAdjacentKeyPoints(pose.keypoints, 0.1);
+                    adjacentPairs.forEach(pair => {
+                        const x1 = pair[0].position.x * scaleX;
+                        const y1 = pair[0].position.y * scaleY;
+                        const x2 = pair[1].position.x * scaleX;
+                        const y2 = pair[1].position.y * scaleY;
+                        
+                        this.ctx.beginPath();
+                        this.ctx.moveTo(x1, y1);
+                        this.ctx.lineTo(x2, y2);
+                        this.ctx.strokeStyle = '#10b981';
+                        this.ctx.lineWidth = 2;
+                        this.ctx.stroke();
+                    });
+                }
+                
+                // Draw keypoints
+                if (this.showMarkers.checked) {
+                    pose.keypoints.forEach(keypoint => {
+                        if (keypoint.score > 0.1) {
+                            const x = keypoint.position.x * scaleX;
+                            const y = keypoint.position.y * scaleY;
+                            
+                            this.ctx.beginPath();
+                            this.ctx.arc(x, y, this.markerSize, 0, 2 * Math.PI);
+                            this.ctx.fillStyle = keypoint.score > 0.5 ? '#3b82f6' : '#f59e0b';
+                            this.ctx.fill();
+                            this.ctx.strokeStyle = '#ffffff';
+                            this.ctx.lineWidth = 1;
+                            this.ctx.stroke();
+                        }
+                    });
+                }
+            }
+            
+            updateUI(scoreData, pose) {
+                const score = scoreData.score;
+                const metrics = scoreData.metrics;
+                
+                this.scoreElement.textContent = score;
+                this.progressFill.style.width = score + '%';
+                
+                // Update category and colors
+                let category, scoreColor;
+                if (score >= 80) {
+                    category = 'Excellent';
+                    scoreColor = 'linear-gradient(45deg, #10b981, #059669)';
+                } else if (score >= 70) {
+                    category = 'Good';
+                    scoreColor = 'linear-gradient(45deg, #10b981, #059669)';
+                } else if (score >= 50) {
+                    category = 'Fair';
+                    scoreColor = 'linear-gradient(45deg, #f59e0b, #d97706)';
+                } else {
+                    category = 'Poor';
+                    scoreColor = 'linear-gradient(45deg, #ef4444, #dc2626)';
+                }
+                
+                this.categoryElement.textContent = category;
+                this.scoreElement.style.background = scoreColor;
+                this.scoreElement.style.webkitBackgroundClip = 'text';
+                this.scoreElement.style.webkitTextFillColor = 'transparent';
+                
+                // Update body analysis
+                if (this.analysisEnabled) {
+                    this.headAlignElement.textContent = metrics.headAlign || '--';
+                    this.shoulderLevelElement.textContent = metrics.shoulderLevel || '--';
+                    this.forwardHeadElement.textContent = metrics.forwardHead || '--';
+                    this.spineCurveElement.textContent = metrics.spineCurve || '--';
+                }
+            }
+            
+            updateTimeTracking(scoreData) {
+                const score = scoreData.score;
+                const now = Date.now();
+                
+                if (now - this.lastUpdateTime >= 1000) {
+                    if (score >= this.threshold) {
+                        this.goodSeconds++;
+                    } else {
+                        this.poorSeconds++;
+                    }
+                    
+                    this.goodTimeElement.textContent = this.formatTime(this.goodSeconds);
+                    this.poorTimeElement.textContent = this.formatTime(this.poorSeconds);
+                    this.lastUpdateTime = now;
+                }
+            }
+            
+            checkAlert(scoreData) {
+                const score = scoreData.score;
+                const now = Date.now();
+                
+                if (score < this.threshold && (now - this.lastAlertTime) > (this.alertCooldown * 1000)) {
+                    this.showAlert('Poor posture detected!');
+                    this.lastAlertTime = now;
+                    
+                    if (this.soundEnabled) {
+                        this.playAlert();
+                    }
+                }
+            }
+            
+            showAlert(message) {
+                // Create alert notification
+                const alert = document.createElement('div');
+                alert.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
+                alert.textContent = message;
+                document.body.appendChild(alert);
+                
+                setTimeout(() => {
+                    alert.remove();
+                }, 3000);
+            }
+            
+            playAlert() {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800;
+                oscillator.type = 'sine';
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+            
+            formatTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+            }
+            
+            formatBreakTime(seconds) {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            }
+            
+            startBreakTimer() {
+                this.breakInterval = setInterval(() => {
+                    if (this.breakTimer > 0) {
+                        this.breakTimer--;
+                        this.breakTimerElement.textContent = this.formatBreakTime(this.breakTimer);
+                    } else {
+                        if (this.breakRemindersEnabled) {
+                            this.showExerciseModal();
+                        }
+                        this.breakTimer = parseInt(document.getElementById('breakIntervalSlider').value) * 60;
+                    }
+                }, 1000);
+            }
+            
+            showExerciseModal() {
+                const exercise = this.exercises[Math.floor(Math.random() * this.exercises.length)];
+                this.exerciseTitle.textContent = exercise.name;
+                
+                let timeLeft = exercise.duration;
+                this.exerciseCountdown.textContent = timeLeft;
+                this.exerciseModal.classList.remove('hidden');
+                this.exerciseModal.classList.add('flex');
+                
+                this.exerciseTimer = setInterval(() => {
+                    timeLeft--;
+                    this.exerciseCountdown.textContent = timeLeft;
+                    
+                    if (timeLeft <= 0) {
+                        this.hideExerciseModal();
+                    }
+                }, 1000);
+            }
+            
+            hideExerciseModal() {
+                if (this.exerciseTimer) {
+                    clearInterval(this.exerciseTimer);
+                    this.exerciseTimer = null;
+                }
+                
+                this.exerciseModal.classList.add('hidden');
+                this.exerciseModal.classList.remove('flex');
+                
+                this.breakTimer = parseInt(document.getElementById('breakIntervalSlider').value) * 60;
+            }
+            
+            showSettingsModal() {
+                this.updateSettingsUI();
+                this.settingsModal.classList.remove('hidden');
+                this.settingsModal.classList.add('flex');
+            }
+            
+            hideSettingsModal() {
+                this.settingsModal.classList.add('hidden');
+                this.settingsModal.classList.remove('flex');
+            }
+            
+            updateSettingsUI() {
+                document.getElementById('sensitivitySlider').value = this.sensitivity;
+                document.getElementById('sensitivityValue').textContent = this.sensitivity;
+                document.getElementById('markerSizeSlider').value = this.markerSize;
+                document.getElementById('markerSizeValue').textContent = this.markerSize;
+                document.getElementById('breakIntervalSlider').value = this.breakTimer / 60;
+                document.getElementById('breakIntervalValue').textContent = this.breakTimer / 60;
+                document.getElementById('cooldownSlider').value = this.alertCooldown;
+                document.getElementById('cooldownValue').textContent = this.alertCooldown;
+                document.getElementById('soundAlerts').checked = this.soundEnabled;
+                document.getElementById('breakReminders').checked = this.breakRemindersEnabled;
+                document.getElementById('showAnalysis').checked = this.analysisEnabled;
+            }
+            
+            saveSettings() {
+                this.sensitivity = parseFloat(document.getElementById('sensitivitySlider').value);
+                this.markerSize = parseInt(document.getElementById('markerSizeSlider').value);
+                const breakMinutes = parseInt(document.getElementById('breakIntervalSlider').value);
+                this.breakTimer = breakMinutes * 60;
+                this.alertCooldown = parseInt(document.getElementById('cooldownSlider').value);
+                this.soundEnabled = document.getElementById('soundAlerts').checked;
+                this.breakRemindersEnabled = document.getElementById('breakReminders').checked;
+                this.analysisEnabled = document.getElementById('showAnalysis').checked;
+                
+                const settings = {
+                    sensitivity: this.sensitivity,
+                    markerSize: this.markerSize,
+                    breakInterval: breakMinutes,
+                    alertCooldown: this.alertCooldown,
+                    soundEnabled: this.soundEnabled,
+                    breakRemindersEnabled: this.breakRemindersEnabled,
+                    analysisEnabled: this.analysisEnabled,
+                    analysisRate: this.analysisRate,
+                    threshold: this.threshold
+                };
+                
+                localStorage.setItem('spineGuardSettings', JSON.stringify(settings));
+                this.hideSettingsModal();
+                this.showAlert('Settings saved successfully!');
+            }
+            
+            loadSettings() {
+                const saved = localStorage.getItem('spineGuardSettings');
+                if (saved) {
+                    const settings = JSON.parse(saved);
+                    this.sensitivity = settings.sensitivity || 1.0;
+                    this.markerSize = settings.markerSize || 5;
+                    this.breakTimer = (settings.breakInterval || 30) * 60;
+                    this.alertCooldown = settings.alertCooldown || 30;
+                    this.soundEnabled = settings.soundEnabled || false;
+                    this.breakRemindersEnabled = settings.breakRemindersEnabled !== false;
+                    this.analysisEnabled = settings.analysisEnabled !== false;
+                    this.analysisRate = settings.analysisRate || 10;
+                    this.threshold = settings.threshold || 50;
+                    
+                    this.rateSlider.value = this.analysisRate;
+                    this.rateDisplay.textContent = this.analysisRate;
+                    this.thresholdSlider.value = this.threshold;
+                    this.thresholdDisplay.textContent = this.threshold;
+                    this.breakTimerElement.textContent = this.formatBreakTime(this.breakTimer);
+                }
+            }
+            
+            resetSettings() {
+                this.sensitivity = 1.0;
+                this.markerSize = 5;
+                this.breakTimer = 30 * 60;
+                this.alertCooldown = 30;
+                this.soundEnabled = false;
+                this.breakRemindersEnabled = true;
+                this.analysisEnabled = true;
+                this.analysisRate = 10;
+                this.threshold = 50;
+                
+                this.updateSettingsUI();
+                this.rateSlider.value = this.analysisRate;
+                this.rateDisplay.textContent = this.analysisRate;
+                this.thresholdSlider.value = this.threshold;
+                this.thresholdDisplay.textContent = this.threshold;
+                
+                localStorage.removeItem('spineGuardSettings');
+                this.showAlert('Settings reset to defaults!');
+            }
+        }
+        
+        new SpineGuardPro();
+    </script>
+</body>
+</html>
