@@ -306,7 +306,6 @@
                 this.exerciseBtn = document.getElementById('exerciseBtn');
                 this.settingsBtn = document.getElementById('settingsBtn');
                 
-                // UI Elements
                 this.scoreElement = document.getElementById('score');
                 this.progressFill = document.getElementById('progressFill');
                 this.categoryElement = document.getElementById('category');
@@ -318,13 +317,11 @@
                 this.processingElement = document.getElementById('processing');
                 this.keypointsElement = document.getElementById('keypoints');
                 
-                // Body analysis elements
                 this.headAlignElement = document.getElementById('headAlign');
                 this.shoulderLevelElement = document.getElementById('shoulderLevel');
                 this.forwardHeadElement = document.getElementById('forwardHead');
                 this.spineCurveElement = document.getElementById('spineCurve');
                 
-                // Controls
                 this.showMarkers = document.getElementById('showMarkers');
                 this.showSkeleton = document.getElementById('showSkeleton');
                 this.rateSlider = document.getElementById('rateSlider');
@@ -332,13 +329,11 @@
                 this.thresholdSlider = document.getElementById('thresholdSlider');
                 this.thresholdDisplay = document.getElementById('thresholdDisplay');
                 
-                // Modals
                 this.exerciseModal = document.getElementById('exerciseModal');
                 this.settingsModal = document.getElementById('settingsModal');
                 this.exerciseTitle = document.getElementById('exerciseTitle');
                 this.exerciseCountdown = document.getElementById('exerciseCountdown');
                 
-                // State
                 this.model = null;
                 this.stream = null;
                 this.isRunning = false;
@@ -351,7 +346,7 @@
                 this.fpsCounter = 0;
                 this.lastFpsTime = 0;
                 this.exerciseTimer = null;
-                this.breakTimer = 30 * 60; // 30 minutes
+                this.breakTimer = 30 * 60; 
                 this.breakInterval = null;
                 this.markerSize = 5;
                 this.sensitivity = 1.0;
@@ -428,18 +423,15 @@
                     this.thresholdDisplay.textContent = this.threshold;
                 });
                 
-                // Exercise modal events
                 document.getElementById('skipExercise').addEventListener('click', () => this.hideExerciseModal());
                 document.getElementById('completeExercise').addEventListener('click', () => this.hideExerciseModal());
                 
-                // Settings modal events
                 document.getElementById('closeSettings').addEventListener('click', () => this.hideSettingsModal());
                 document.getElementById('saveSettings').addEventListener('click', () => this.saveSettings());
                 document.getElementById('resetSettings').addEventListener('click', () => this.resetSettings());
                 
                 this.bindSettingsEvents();
                 
-                // Close modals on outside click
                 this.exerciseModal.addEventListener('click', (e) => {
                     if (e.target === this.exerciseModal) this.hideExerciseModal();
                 });
@@ -495,7 +487,6 @@
                     this.video.srcObject = this.stream;
                     await this.video.play();
                     
-                    // Wait for video metadata to load
                     await new Promise(resolve => {
                         if (this.video.videoWidth > 0) {
                             resolve();
@@ -507,7 +498,6 @@
                     this.canvas.width = this.video.videoWidth;
                     this.canvas.height = this.video.videoHeight;
                     
-                    // Set canvas display size to match video
                     this.canvas.style.width = this.video.offsetWidth + 'px';
                     this.canvas.style.height = this.video.offsetHeight + 'px';
                     
@@ -561,7 +551,6 @@
                 this.startBtn.disabled = false;
                 this.stopBtn.disabled = true;
                 
-                // Reset displays
                 this.fpsElement.textContent = '--';
                 this.processingElement.textContent = '--';
                 this.keypointsElement.textContent = '--';
@@ -601,7 +590,6 @@
                     console.error('Analysis error:', error);
                 }
                 
-                // Update FPS
                 this.frameCount++;
                 const now = Date.now();
                 if (now - this.lastFpsTime >= 1000) {
@@ -633,7 +621,6 @@
                     y: (leftShoulder.y + rightShoulder.y) / 2
                 };
                 
-                // Head alignment
                 const headOffset = Math.abs(nose.x - shoulderCenter.x);
                 const shoulderWidth = Math.abs(leftShoulder.x - rightShoulder.x);
                 const headAlignmentRatio = headOffset / (shoulderWidth || 100);
@@ -652,7 +639,6 @@
                     metrics.headAlign = 'Poor';
                 }
                 
-                // Shoulder level
                 const shoulderLevelDiff = Math.abs(leftShoulder.y - rightShoulder.y);
                 if (shoulderLevelDiff < 8) {
                     score += 15;
@@ -665,7 +651,6 @@
                     metrics.shoulderLevel = 'Uneven';
                 }
                 
-                // Forward head posture
                 const neckLength = Math.abs(nose.y - shoulderCenter.y);
                 const postureRatio = neckLength / (shoulderWidth || 100);
                 if (postureRatio > 0.7) {
@@ -679,7 +664,6 @@
                     metrics.forwardHead = 'Forward';
                 }
                 
-                // Spine analysis
                 if (keypoints.leftHip && keypoints.rightHip) {
                     const leftHip = keypoints.leftHip.position;
                     const rightHip = keypoints.rightHip.position;
@@ -717,7 +701,6 @@
                 const scaleX = this.canvas.width / this.video.videoWidth;
                 const scaleY = this.canvas.height / this.video.videoHeight;
                 
-                // Draw skeleton connections
                 if (this.showSkeleton.checked) {
                     const adjacentPairs = posenet.getAdjacentKeyPoints(pose.keypoints, 0.1);
                     adjacentPairs.forEach(pair => {
@@ -735,7 +718,6 @@
                     });
                 }
                 
-                // Draw keypoints
                 if (this.showMarkers.checked) {
                     pose.keypoints.forEach(keypoint => {
                         if (keypoint.score > 0.1) {
@@ -761,7 +743,6 @@
                 this.scoreElement.textContent = score;
                 this.progressFill.style.width = score + '%';
                 
-                // Update category and colors
                 let category, scoreColor;
                 if (score >= 80) {
                     category = 'Excellent';
@@ -782,7 +763,6 @@
                 this.scoreElement.style.webkitBackgroundClip = 'text';
                 this.scoreElement.style.webkitTextFillColor = 'transparent';
                 
-                // Update body analysis
                 if (this.analysisEnabled) {
                     this.headAlignElement.textContent = metrics.headAlign || '--';
                     this.shoulderLevelElement.textContent = metrics.shoulderLevel || '--';
@@ -823,7 +803,6 @@
             }
             
             showAlert(message) {
-                // Create alert notification
                 const alert = document.createElement('div');
                 alert.className = 'fixed top-4 right-4 bg-red-600 text-white px-4 py-2 rounded-lg shadow-lg z-50';
                 alert.textContent = message;
